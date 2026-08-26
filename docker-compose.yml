@@ -1,0 +1,89 @@
+version: "3.9"
+
+###############################################################################
+# Enterprise NIDS — Docker Compose (Week 1 Foundation Services)
+###############################################################################
+# Services included here:
+#   redis        — Flow vector queue + Celery broker
+#   timescaledb  — Time-series storage (PostgreSQL + TimescaleDB extension)
+#   grafana      — Optional: operational dashboards (TimescaleDB datasource)
+#
+# Week 2 additions (stubbed): fastapi, celery-worker, shap-worker, frontend
+###############################################################################
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nids_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── TimescaleDB ────────────────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nids_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-nids}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nids_secret}
+      POSTGRES_DB:       ${POSTGRES_DB:-nids_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - tsdb_data:/var/lib/postgresql/data
+      - ./infra/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nids}"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Grafana (operational monitoring) ──────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: nids_grafana
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-worldmap-panel
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+
+  # ── FastAPI ML Inference (stub — wired up in Week 2) ──────────────────────
+  # fastapi:
+  #   build: .
+  #   command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+  #   ports: ["8000:8000"]
+  #   depends_on: [redis, timescaledb]
+
+  # ── React SOC Dashboard (stub — wired up in Week 2) ──────────────────────
+  # frontend:
+  #   build: ./frontend
+  #   ports: ["3000:3000"]
+  #   depends_on: [fastapi]
+
+volumes:
+  redis_data:
+  tsdb_data:
+  grafana_data:
