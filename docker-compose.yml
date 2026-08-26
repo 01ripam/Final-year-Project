@@ -64,6 +64,10 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-worldmap-panel
+      # Passed through to datasource provisioning template
+      POSTGRES_USER: ${POSTGRES_USER:-nids}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nids_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-nids_db}
     ports:
       - "3001:3000"
     volumes:
@@ -71,11 +75,56 @@ services:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
 
   # ── FastAPI ML Inference (stub — wired up in Week 2) ──────────────────────
-  # fastapi:
-  #   build: .
-  #   command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-  #   ports: ["8000:8000"]
-  #   depends_on: [redis, timescaledb]
+  fastapi:
+    build: .
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports: ["8000:8000"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+  # ── Celery Workers (Inference, SHAP, DB) ──────────────────────────────────
+  celery-inference:
+    build: .
+    command: celery -A src.workers.celery_app worker -Q inference -c 4 -l INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+  celery-shap:
+    build: .
+    command: celery -A src.workers.celery_app worker -Q shap -c 2 -l INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+  celery-db:
+    build: .
+    command: celery -A src.workers.celery_app worker -Q db_write -c 2 -l INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      POSTGRES_USER: ${POSTGRES_USER:-nids}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nids_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-nids_db}
+      # DB Writer needs to know how to connect to TimescaleDB
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nids}:${POSTGRES_PASSWORD:-nids_secret}@timescaledb:5432/${POSTGRES_DB:-nids_db}
 
   # ── React SOC Dashboard (stub — wired up in Week 2) ──────────────────────
   # frontend:
