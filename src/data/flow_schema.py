@@ -76,7 +76,7 @@ class FlowFeatureVector(BaseModel):
         "use_enum_values": True,
         "json_schema_extra": {
             "title": "FlowFeatureVector",
-            "description": "79-field network flow vector for ML inference.",
+            "description": "Network flow vector containing 78 ML features.",
         },
     }
 
@@ -270,6 +270,8 @@ class FlowFeatureVector(BaseModel):
             Feature values in the exact order of ``feature_columns``.
         """
         data = self.model_dump()
+        if "destination_port" in feature_columns and "dst_port" in data:
+            data["destination_port"] = data["dst_port"]
         return [data[col] for col in feature_columns]
 
     def to_db_record(self) -> dict:

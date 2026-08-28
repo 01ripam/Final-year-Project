@@ -159,8 +159,8 @@ class TestDummyClassifier:
         assert 0 <= idx < NUM_CLASSES
 
     def test_feature_columns_list(self):
-        assert len(self.model.feature_columns) == 76
-        assert self.model.feature_columns[0] == "flow_duration"
+        assert len(self.model.feature_columns) == 78
+        assert self.model.feature_columns[0] == "destination_port"
 
     def test_name(self):
         assert self.model.name == "dummy-v1.0"
@@ -296,8 +296,8 @@ class TestInferencePipelineLogic:
     def test_feature_array_extraction(self):
         arr = self.vector.to_feature_array(self.model.feature_columns)
         assert len(arr) == len(self.model.feature_columns)
-        # First feature is flow_duration
-        assert arr[0] == self.vector.flow_duration
+        # First feature is destination_port
+        assert arr[0] == self.vector.dst_port
 
     def test_inference_produces_valid_prediction(self):
         features = np.array(
@@ -398,7 +398,8 @@ class TestFeatureColumnAlignment:
         model = DummyClassifier()
 
         for col in model.feature_columns:
-            assert col in data, f"Feature column {col!r} not found in FlowFeatureVector"
+            mapped_col = "dst_port" if col == "destination_port" else col
+            assert mapped_col in data, f"Feature column {col!r} (mapped to {mapped_col!r}) not found in FlowFeatureVector"
 
     def test_feature_array_length_matches(self):
         vector = FlowFeatureVector(**_minimal_vector_kwargs())

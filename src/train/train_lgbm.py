@@ -67,6 +67,7 @@ def main():
         num_leaves=64,
         objective="multiclass",
         num_class=len(CLASS_NAMES),
+        class_weight="balanced",
         random_state=42,
         n_jobs=-1
     )

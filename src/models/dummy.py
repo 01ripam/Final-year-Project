@@ -25,6 +25,8 @@ from src.models.base import BaseClassifier, CLASS_NAMES, NUM_CLASSES
 # ── Default feature column list (78 CICIDS2017 features) ─────────────────────
 # This matches the FlowFeatureVector field order, excluding identity/metadata.
 DEFAULT_FEATURE_COLUMNS: List[str] = [
+    "destination_port",
+    "protocol",
     "flow_duration",
     "total_fwd_packets", "total_bwd_packets",
     "total_length_fwd_packets", "total_length_bwd_packets",

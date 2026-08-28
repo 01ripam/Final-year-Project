@@ -71,10 +71,16 @@ def _get_redis() -> redis_lib.Redis:
 
 
 def _ensure_model_registered() -> None:
-    """Register the DummyClassifier if no model is registered yet."""
+    """Register the LightGBM model if no model is registered yet."""
     if len(registry) == 0:
-        logger.info("No models registered — loading DummyClassifier as fallback.")
-        registry.register("dummy-v1.0", DummyClassifier())
+        logger.info("No models registered — loading LightGBM model.")
+        try:
+            from src.models.lightgbm import LightGBMClassifier
+            lgbm_model = LightGBMClassifier(model_path="models/lgbm-v1.pkl")
+            registry.register(lgbm_model.name, lgbm_model)
+        except Exception as e:
+            logger.warning("Failed to load LightGBM model, falling back to DummyClassifier: %s", e)
+            registry.register("dummy-v1.0", DummyClassifier())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-source_port
 destination_port
 protocol
 flow_duration
