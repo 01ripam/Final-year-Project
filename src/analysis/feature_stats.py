@@ -26,9 +26,11 @@ import logging
 from pathlib import Path
 from typing import Dict, Tuple
 
+# pyrefly: ignore [missing-import]
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+# pyrefly: ignore [missing-import]
 import lightgbm as lgb
 
 logging.basicConfig(
