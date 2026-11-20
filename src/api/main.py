@@ -50,6 +50,11 @@ from src.data.flow_schema import (
 )
 
 logger = logging.getLogger("nids.api")
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
+    logger.addHandler(_handler)
+logger.setLevel(logging.INFO)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 REDIS_URL      = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -58,6 +63,7 @@ ALERTS_CHANNEL = "alerts"
 
 # ── Redis connections ─────────────────────────────────────────────────────────
 _redis: Optional[redis_lib.Redis] = None
+_redis_available: bool = False
 
 
 def _get_redis() -> redis_lib.Redis:
@@ -66,8 +72,9 @@ def _get_redis() -> redis_lib.Redis:
         _redis = redis_lib.from_url(
             REDIS_URL,
             decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            retry_on_timeout=False,
         )
     return _redis
 
@@ -79,6 +86,7 @@ def _get_redis() -> redis_lib.Redis:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Startup / shutdown hooks."""
+    global _redis_available
     # ── Startup ───────────────────────────────────────────────────────────────
     logger.info("NIDS API starting up …")
 
@@ -94,9 +102,14 @@ async def lifespan(application: FastAPI):
     # Verify Redis connectivity
     try:
         _get_redis().ping()
+        _redis_available = True
         logger.info("Redis connected: %s", REDIS_URL)
     except Exception:
-        logger.warning("Redis not reachable at %s — alerts will not broadcast.", REDIS_URL)
+        _redis_available = False
+        logger.warning(
+            "Redis not reachable at %s — operating in standalone mode (alerts will not broadcast).",
+            REDIS_URL,
+        )
 
     yield
 
@@ -145,21 +158,16 @@ except ImportError:
 
 @app.get("/health", tags=["ops"])
 def health_check():
-    """Readiness probe — checks Redis connectivity."""
-    checks = {"redis": False, "model_loaded": False}
-
-    try:
-        _get_redis().ping()
-        checks["redis"] = True
-    except Exception:
-        pass
-
-    checks["model_loaded"] = len(registry) > 0
-
-    healthy = all(checks.values())
+    """Readiness probe — checks Redis connectivity and loaded models."""
+    global _redis_available
+    checks = {
+        "redis": _redis_available,
+        "model_loaded": len(registry) > 0,
+    }
     return {
-        "status": "healthy" if healthy else "degraded",
+        "status": "healthy" if _redis_available else "standalone",
         "checks": checks,
+        "active_model": registry.active_name,
     }
 
 
@@ -170,12 +178,14 @@ def pipeline_stats():
         "active_model": registry.active_name,
         "registered_models": registry.available,
         "flow_queue_length": 0,
+        "redis_connected": _redis_available,
     }
 
-    try:
-        stats["flow_queue_length"] = _get_redis().llen(FLOW_QUEUE_KEY)
-    except Exception:
-        pass
+    if _redis_available:
+        try:
+            stats["flow_queue_length"] = _get_redis().llen(FLOW_QUEUE_KEY)
+        except Exception:
+            pass
 
     return stats
 
@@ -239,19 +249,20 @@ def predict_flow(vector: FlowFeatureVector):
         shap_queued=is_malicious,
     )
 
-    # Broadcast alert
-    try:
-        alert_payload = {
-            "flow_id": vector.flow_id,
-            "src_ip": vector.src_ip,
-            "dst_ip": vector.dst_ip,
-            "predicted_class": predicted_class,
-            "confidence": round(confidence, 4),
-            "is_alert": is_malicious,
-        }
-        _get_redis().publish(ALERTS_CHANNEL, json.dumps(alert_payload))
-    except Exception:
-        pass
+    # Broadcast alert via Redis if available
+    if _redis_available and is_malicious:
+        try:
+            alert_payload = {
+                "flow_id": vector.flow_id,
+                "src_ip": vector.src_ip,
+                "dst_ip": vector.dst_ip,
+                "predicted_class": predicted_class,
+                "confidence": round(confidence, 4),
+                "is_alert": is_malicious,
+            }
+            _get_redis().publish(ALERTS_CHANNEL, json.dumps(alert_payload))
+        except Exception:
+            pass
 
     return json.loads(prediction.model_dump_json())
 
@@ -299,18 +310,26 @@ async def websocket_alerts(websocket: WebSocket):
     """
     await ws_manager.connect(websocket)
 
-    # Start Redis pub/sub listener in a background task
+    # Start Redis pub/sub listener if Redis is online
     pubsub = None
     try:
-        r = _get_redis()
-        pubsub = r.pubsub()
-        pubsub.subscribe(ALERTS_CHANNEL)
+        if _redis_available:
+            r = _get_redis()
+            pubsub = r.pubsub()
+            pubsub.subscribe(ALERTS_CHANNEL)
+        else:
+            await websocket.send_text(json.dumps({
+                "status": "info",
+                "message": "Redis is not connected — real-time WebSocket alert broadcast requires Redis."
+            }))
 
         while True:
-            # Non-blocking poll with short timeout
-            message = pubsub.get_message(timeout=0.5)
-            if message and message["type"] == "message":
-                await websocket.send_text(message["data"])
+            if pubsub is not None:
+                message = pubsub.get_message(timeout=0.5)
+                if message and message["type"] == "message":
+                    await websocket.send_text(message["data"])
+            else:
+                await asyncio.sleep(1.0)
 
             # Also check for client messages (ping/pong, close)
             try:
