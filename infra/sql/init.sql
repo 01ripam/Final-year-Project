@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS flows (
     capture_timestamp   TIMESTAMPTZ  NOT NULL,
     src_ip              INET         NOT NULL,
     dst_ip              INET         NOT NULL,
-    src_port            SMALLINT     NOT NULL,
-    dst_port            SMALLINT     NOT NULL,
+    src_port            INTEGER      NOT NULL,
+    dst_port            INTEGER      NOT NULL,
     protocol            SMALLINT     NOT NULL,
     flow_duration       DOUBLE PRECISION,
     total_fwd_packets   INTEGER,
@@ -42,11 +42,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     model_name             TEXT,
     inference_latency_ms   REAL,
     shap_queued            BOOLEAN      DEFAULT FALSE,
-    PRIMARY KEY (flow_id, inference_timestamp),
-    FOREIGN KEY (flow_id, inference_timestamp)
-        REFERENCES flows(flow_id, capture_timestamp)
-        ON DELETE CASCADE
-        DEFERRABLE INITIALLY DEFERRED
+    PRIMARY KEY (flow_id, inference_timestamp)
 );
 
 SELECT create_hypertable(

@@ -31,10 +31,6 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, ".")
-sys.path.insert(0, "src/data")
-sys.path.insert(0, "src/models")
-sys.path.insert(0, "src/workers")
-sys.path.insert(0, "src/network_engine")
 
 from src.models.base import BaseClassifier, CLASS_NAMES, NUM_CLASSES
 from src.models.dummy import DummyClassifier, DEFAULT_FEATURE_COLUMNS

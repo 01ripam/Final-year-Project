@@ -41,7 +41,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from src.models.base import CLASS_NAMES
-from src.models.registry import registry
+from src.models.registry import registry, load_default_models
 from src.models.dummy import DummyClassifier
 from src.data.flow_schema import (
     FlowFeatureVector,
@@ -82,10 +82,14 @@ async def lifespan(application: FastAPI):
     # ── Startup ───────────────────────────────────────────────────────────────
     logger.info("NIDS API starting up …")
 
-    # Register default model if none present
+    # Register models (trained models from disk if present, else fallback)
     if len(registry) == 0:
-        registry.register("dummy-v1.0", DummyClassifier())
-        logger.info("Registered DummyClassifier as fallback model.")
+        load_default_models()
+        logger.info(
+            "Loaded models into registry: %s (active: %s)",
+            registry.available,
+            registry.active_name,
+        )
 
     # Verify Redis connectivity
     try:

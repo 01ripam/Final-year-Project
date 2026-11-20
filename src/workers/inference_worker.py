@@ -43,7 +43,7 @@ if _ROOT not in sys.path:
 
 from src.workers.celery_app import app
 from src.models.base import CLASS_NAMES
-from src.models.registry import registry
+from src.models.registry import registry, load_default_models
 from src.models.dummy import DummyClassifier
 from src.data.flow_schema import FlowFeatureVector, FlowPrediction, AttackClass
 
@@ -71,10 +71,14 @@ def _get_redis() -> redis_lib.Redis:
 
 
 def _ensure_model_registered() -> None:
-    """Register the DummyClassifier if no model is registered yet."""
+    """Discover trained models from disk or fall back to DummyClassifier."""
     if len(registry) == 0:
-        logger.info("No models registered — loading DummyClassifier as fallback.")
-        registry.register("dummy-v1.0", DummyClassifier())
+        load_default_models()
+        logger.info(
+            "Registered models in inference worker: %s (active: %s)",
+            registry.available,
+            registry.active_name,
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

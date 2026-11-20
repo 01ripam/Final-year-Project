@@ -20,8 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy source code and trained models
 COPY src/ ./src/
+COPY models/ ./models/
 
 # Default command (can be overridden in docker-compose.yml)
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

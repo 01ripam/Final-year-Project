@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 try:

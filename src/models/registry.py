@@ -31,6 +31,7 @@ Project: Enterprise NIDS — Week 2
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from typing import Dict, List, Optional
 
@@ -156,3 +157,57 @@ class ModelRegistry:
 # Import ``registry`` from this module — do NOT instantiate your own.
 
 registry = ModelRegistry()
+
+
+def load_default_models(models_dir: Optional[str] = None) -> ModelRegistry:
+    """
+    Discover and register available trained models from disk into the registry.
+
+    Discovers:
+      1. models/lgbm-v1.pkl -> "lightgbm-v1.0"
+      2. models/pytorch-mlp-v1.pt + models/scaler.pkl -> "pytorch-mlp-v1.0"
+
+    Sets "lightgbm-v1.0" as the default active model if loaded.
+    Falls back to registering DummyClassifier only if no model artefacts exist.
+    """
+    if models_dir is None:
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        models_dir = os.path.join(project_root, "models")
+
+    lgbm_path = os.path.join(models_dir, "lgbm-v1.pkl")
+    pt_path = os.path.join(models_dir, "pytorch-mlp-v1.pt")
+    scaler_path = os.path.join(models_dir, "scaler.pkl")
+
+    # 1. Attempt to load LightGBM
+    if os.path.exists(lgbm_path):
+        try:
+            from src.models.lightgbm import LightGBMClassifier
+            lgbm = LightGBMClassifier(lgbm_path)
+            registry.register(lgbm.name, lgbm)
+            logger.info("Loaded and registered %s from %s", lgbm.name, lgbm_path)
+        except Exception as e:
+            logger.warning("Could not load LightGBM model from %s: %s", lgbm_path, e)
+
+    # 2. Attempt to load PyTorch
+    if os.path.exists(pt_path) and os.path.exists(scaler_path):
+        try:
+            from src.models.pytorch import PyTorchClassifier
+            pt = PyTorchClassifier(pt_path, scaler_path)
+            registry.register(pt.name, pt)
+            logger.info("Loaded and registered %s from %s", pt.name, pt_path)
+        except Exception as e:
+            logger.warning("Could not load PyTorch model from %s: %s", pt_path, e)
+
+    # 3. If models were loaded, prefer LightGBM as active model
+    if "lightgbm-v1.0" in registry.available:
+        registry.set_active("lightgbm-v1.0")
+    elif registry.available:
+        registry.set_active(registry.available[0])
+    else:
+        from src.models.dummy import DummyClassifier
+        dummy = DummyClassifier()
+        registry.register(dummy.name, dummy)
+        registry.set_active(dummy.name)
+        logger.info("No trained models found on disk — registered DummyClassifier.")
+
+    return registry

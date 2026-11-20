@@ -39,9 +39,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
+
+# ── Ensure project root is in sys.path for standalone CLI execution ──────────
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 import numpy as np
 import pandas as pd
